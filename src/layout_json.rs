@@ -40,11 +40,20 @@ pub fn write_layout_json(
     out: &mut [u8],
 ) -> Result<usize, LayoutError> {
     // First pass: exact length, so a too-small buffer is rejected whole.
-    let needed = layout_json_len(name, &source);
+    let needed = json_len(name, &source);
     if out.len() < needed {
         return Err(LayoutError::OutputTooSmall { needed });
     }
     let mut w = JsonWriter { buf: out, pos: 0 };
+    write_layout_json_parts(&mut w, name, &source);
+    debug_assert_eq!(w.pos, needed);
+    Ok(w.pos)
+}
+
+/// The JSON document, emitted as one structural walk. Kept as a single
+/// function so the byte shape exists in exactly one place; the length
+/// pass below mirrors it field for field.
+fn write_layout_json_parts(w: &mut JsonWriter<'_>, name: &str, source: &SourceDesc<'_>) {
     w.write(b"{\"version\":1,\"name\":");
     w.write_json_string(name);
     w.write(b",\"source\":");
@@ -54,37 +63,33 @@ pub fn write_layout_json(
             w.write_json_string(block);
             w.write(b",\"count\":");
             let mut num = [0u8; 10];
-            w.write(itoa(count as u64, &mut num));
-            w.write(b"}");
+            w.write(itoa(*count as u64, &mut num));
         }
         SourceDesc::Chars(symbols) => {
             w.write(b"{\"type\":\"chars\",\"symbols\":");
             w.write_json_string(symbols);
-            w.write(b"}");
         }
     }
-    w.write(b"}");
-    debug_assert_eq!(w.pos, needed);
-    Ok(w.pos)
+    w.write(b"}}");
 }
 
-/// Exact JSON byte length for a layout description.
-fn layout_json_len(name: &str, source: &SourceDesc<'_>) -> usize {
+/// Exact JSON byte length for a layout description. Mirrors
+/// [`write_layout_json_parts`] field for field.
+fn json_len(name: &str, source: &SourceDesc<'_>) -> usize {
     let mut n = "{\"version\":1,\"name\":".len() + json_string_len(name) + ",\"source\":".len();
-    match source {
+    n += match source {
         SourceDesc::Block { block, count } => {
             let mut num = [0u8; 10];
-            n += "{\"type\":\"block\",\"block\":".len()
+            "{\"type\":\"block\",\"block\":".len()
                 + json_string_len(block)
                 + ",\"count\":".len()
                 + itoa(*count as u64, &mut num).len()
-                + "}".len();
         }
         SourceDesc::Chars(symbols) => {
-            n += "{\"type\":\"chars\",\"symbols\":".len() + json_string_len(symbols) + "}".len();
+            "{\"type\":\"chars\",\"symbols\":".len() + json_string_len(symbols)
         }
-    }
-    n + "}".len()
+    };
+    n + "}}".len()
 }
 
 /// Parses and validates a layout from its JSON representation.
@@ -284,7 +289,7 @@ mod tests {
             &mut buf,
         ) {
             Err(LayoutError::OutputTooSmall { needed }) => {
-                let real = layout_json_len(
+                let real = json_len(
                     "x",
                     &SourceDesc::Block {
                         block: "Runic",

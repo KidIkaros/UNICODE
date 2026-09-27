@@ -71,16 +71,11 @@ format; feed it back to validate/encode/decode."
 // -- flag helpers -------------------------------------------------------------
 
 fn flag_value<'a>(args: &'a [String], name: &str) -> Result<Option<&'a str>, String> {
-    let mut it = args.iter();
-    while let Some(a) = it.next() {
-        if a == name {
-            return it
-                .next()
-                .map(|v| Some(v.as_str()))
-                .ok_or_else(|| format!("missing value for {name}"));
-        }
+    match args.iter().position(|a| a == name) {
+        None => Ok(None),
+        Some(i) if i + 1 < args.len() => Ok(Some(args[i + 1].as_str())),
+        Some(_) => Err(format!("missing value for {name}")),
     }
-    Ok(None)
 }
 
 fn require_flag<'a>(args: &'a [String], name: &str) -> Result<&'a str, String> {

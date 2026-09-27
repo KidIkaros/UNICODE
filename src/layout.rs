@@ -211,17 +211,13 @@ impl Layout {
                 layout.len = count as usize;
             }
             Symbols::Chars(s) => {
-                let mut len = 0usize;
-                push_char_symbols(&mut layout, s, &mut len, strict)?;
-                layout.len = len;
+                push_char_symbols(&mut layout, s, strict)?;
             }
             #[cfg(feature = "std")]
             Symbols::String(s) => {
                 // Owned source: copy the code points in, then drop the
                 // string. Nothing leaks.
-                let mut len = 0usize;
-                push_char_symbols(&mut layout, &s, &mut len, strict)?;
-                layout.len = len;
+                push_char_symbols(&mut layout, &s, strict)?;
             }
         }
 
@@ -821,14 +817,10 @@ impl Layout {
 }
 
 /// Copies the code points of `s` into `layout.symbols` starting at 0,
-/// validating range, safety, and distinctness as it goes. `len` tracks
-/// how many slots are filled.
-fn push_char_symbols(
-    layout: &mut Layout,
-    s: &str,
-    len: &mut usize,
-    strict: bool,
-) -> Result<(), LayoutError> {
+/// sets `layout.len`, and validates range, safety, and distinctness as
+/// it goes. (The `&mut Layout` is the accumulated value — Clojure's
+/// `reduce` over the string with the layout as the accumulator.)
+fn push_char_symbols(layout: &mut Layout, s: &str, strict: bool) -> Result<(), LayoutError> {
     for (index, c) in s.chars().enumerate() {
         if index >= MAX_LAYOUT_LEN {
             return Err(LayoutError::TooManySymbols {
@@ -850,12 +842,12 @@ fn push_char_symbols(
         // Alphabet symbols must be distinct or decoding is ambiguous.
         // n ≤ 4096, so a linear scan over previous entries costs at most
         // ~8M comparisons once, at construction time.
-        if layout.symbols[..*len].contains(&cp) {
+        if layout.symbols[..index].contains(&cp) {
             return Err(LayoutError::DuplicateSymbol { index, cp });
         }
         layout.symbols[index] = cp;
-        *len += 1;
     }
+    layout.len = s.chars().count();
     Ok(())
 }
 

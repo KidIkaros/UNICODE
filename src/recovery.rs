@@ -9,10 +9,13 @@
 //! every invisible format character, and every combining mark, because those
 //! live *inside* allocated blocks.
 //!
-//! [`recovery_safe`] composes the missing checks on top of it. It mirrors the
-//! SDK recovery codec's codepoint policy so a layout can be validated here
-//! before it is used as a recovery alphabet. The SDK remains authoritative:
-//! where the two could disagree, the SDK rejects and the phrase fails.
+//! [`recovery_safe`] composes the missing checks on top of it, so a layout can
+//! be validated here before it is used as a recovery alphabet.
+//!
+//! This check is independent of the SDK's codepoint policy and is deliberately
+//! *not* kept in lockstep with it: the SDK is authoritative, so a layout that
+//! passes here may still be refused by the SDK, and where the two disagree the
+//! SDK's verdict is the one that governs a phrase.
 //!
 //! ## Residual limitation
 //!

@@ -21,6 +21,9 @@
 //! * Recovery-alphabet checks ([`recovery_safe`],
 //!   [`recovery_symbol_count`]): the stricter contract a seed-backup
 //!   alphabet must satisfy, and the phrase length it produces.
+//! * [`dovahzul`] — the Skyrim dragon language's 34 claw-runes as a
+//!   documented Supplementary PUA-A mapping, with a ready-made cipher
+//!   layout and a Latin↔rune transliterator.
 //!
 //! ## Cipher usage patterns
 //!
@@ -79,6 +82,7 @@
 extern crate std;
 
 mod block_id;
+pub mod dovahzul;
 pub mod layout;
 pub mod layout_json;
 #[cfg(test)]
@@ -91,7 +95,7 @@ mod unicode16_blocks;
 pub use block_id::BlockId;
 pub use layout::{Layout, LayoutError, Symbols, MAX_LAYOUT_LEN};
 #[cfg(feature = "json")]
-pub use layout_json::layout_from_json;
+pub use layout_json::{layout_from_json, layout_from_json_permissive};
 pub use layout_json::{write_layout_json, SourceDesc};
 pub use recovery::{
     first_unsafe_symbol, recovery_message_bits, recovery_safe, recovery_symbol_count,

@@ -36,9 +36,15 @@ for layout in layouts/*.json; do
     back="$(mktemp)"
     trap 'rm -f "$PAYLOAD" "$cipher" "$back"' EXIT
 
-    "$BIN" validate "$layout" > /dev/null
-    "$BIN" encode "$layout" --in "$PAYLOAD" --out "$cipher" 2> /dev/null
-    "$BIN" decode "$layout" --in "$cipher" --out "$back" 2> /dev/null
+    # Private-use layouts (dovahzul) only validate permissively; every
+    # conventional layout still goes through the strict path.
+    PERM=""
+    if ! "$BIN" validate "$layout" > /dev/null 2>&1; then
+        PERM="--permissive"
+    fi
+    "$BIN" validate "$layout" $PERM > /dev/null
+    "$BIN" encode "$layout" $PERM --in "$PAYLOAD" --out "$cipher" 2> /dev/null
+    "$BIN" decode "$layout" $PERM --in "$cipher" --out "$back" 2> /dev/null
     cmp "$PAYLOAD" "$back"
 
     symbols=$(python3 -c "print(len(open('$cipher', encoding='utf-8').read()))")

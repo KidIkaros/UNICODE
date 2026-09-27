@@ -23,8 +23,9 @@ use std::process::ExitCode;
 
 use unicode16_blocks::layout::{Layout, Symbols, MAX_LAYOUT_LEN};
 use unicode16_blocks::{
-    block_by_name, layout_from_json, recovery_symbol_count, recovery_usable, write_layout_json,
-    LayoutError, SourceDesc, MAX_PHRASE_SYMBOLS, SUPPORTED_ENTROPY_BYTES,
+    block_by_name, layout_from_json, layout_from_json_permissive, recovery_symbol_count,
+    recovery_usable, write_layout_json, LayoutError, SourceDesc, MAX_PHRASE_SYMBOLS,
+    SUPPORTED_ENTROPY_BYTES,
 };
 
 fn main() -> ExitCode {
@@ -32,11 +33,33 @@ fn main() -> ExitCode {
     match args.first().map(String::as_str) {
         Some("from-block") => cmd_from_block(&args[1..]),
         Some("from-symbols") => cmd_from_symbols(&args[1..]),
-        Some("validate") => cmd_validate(args.get(1).map(String::as_str)),
-        Some("encode") => cmd_encode(args.get(1).map(String::as_str), &args[2..]),
-        Some("decode") => cmd_decode(args.get(1).map(String::as_str), &args[2..]),
+        Some("validate") => {
+            let (permissive, rest) = take_permissive(&args[1..]);
+            cmd_validate(rest.first().map(String::as_str), permissive)
+        }
+        Some("encode") => {
+            let (permissive, rest) = take_permissive(&args[1..]);
+            cmd_encode(
+                rest.first().map(String::as_str),
+                rest.get(1..).unwrap_or(&[]),
+                permissive,
+            )
+        }
+        Some("decode") => {
+            let (permissive, rest) = take_permissive(&args[1..]);
+            cmd_decode(
+                rest.first().map(String::as_str),
+                rest.get(1..).unwrap_or(&[]),
+                permissive,
+            )
+        }
         Some("list-blocks") => cmd_list_blocks(),
-        Some("recovery-check") => cmd_recovery_check(args.get(1).map(String::as_str)),
+        Some("translit") => cmd_translit(&args[1..]),
+        Some("untranslit") => cmd_untranslit(&args[1..]),
+        Some("recovery-check") => {
+            let (permissive, rest) = take_permissive(&args[1..]);
+            cmd_recovery_check(rest.first().map(String::as_str), permissive)
+        }
         Some("--help") | Some("-h") | Some("help") | None => {
             print_help();
             ExitCode::SUCCESS
@@ -54,20 +77,29 @@ fn print_help() {
         "usage: layout <command> [args]
 
 commands:
-  from-block   --block <name> --count <n> [--name <label>]
+  from-block   --block <name> --count <n> [--name <label>] [--permissive]
                Create a layout from the first n code points of a block.
-  from-symbols --symbols <string> [--name <label>]
+  from-symbols --symbols <string> [--name <label>] [--permissive]
                Create a layout from pasted symbols (each char = one slot).
-  validate     <layout.json>
+  validate     <layout.json> [--permissive]
                Check a layout file and print a summary.
-  encode       <layout.json> [--in <file>] [--out <file>]
+  encode       <layout.json> [--in <file>] [--out <file>] [--permissive]
                Encode bytes (file or stdin) into cipher symbols.
-  decode       <layout.json> [--in <file>] [--out <file>]
+  decode       <layout.json> [--in <file>] [--out <file>] [--permissive]
                Decode cipher symbols back into bytes.
   list-blocks  Print every Unicode 16.0 block with its range and size.
-  recovery-check <layout.json>
+  translit     <latin text>
+               Transliterate Latin text into Dovahzul dragon runes
+               (Supplementary PUA-A, U+F0000..; see the dovahzul module).
+  untranslit   <runes>
+               Transliterate Dovahzul dragon runes back into Latin text.
+  recovery-check <layout.json> [--permissive]
                Check a layout against the recovery-phrase policy and report
                the phrase length it produces at each supported entropy width.
+
+--permissive switches validation from Layout::new to
+Layout::new_permissive, accepting private-use symbols (e.g. the
+dovahzul dragon-rune layout), noncharacters, and variation selectors.
 
 The layout JSON produced by from-block/from-symbols is the shareable
 format; feed it back to validate/encode/decode."
@@ -88,20 +120,41 @@ fn require_flag<'a>(args: &'a [String], name: &str) -> Result<&'a str, String> {
     flag_value(args, name)?.ok_or_else(|| format!("missing required flag {name}"))
 }
 
+/// Boolean switch: `--permissive` anywhere in the argument list.
+/// Returns the flag's presence and the list with it stripped, so the
+/// commands below keep their positional/flag layout.
+fn take_permissive(args: &[String]) -> (bool, Vec<String>) {
+    let on = args.iter().any(|a| a == "--permissive");
+    (
+        on,
+        args.iter()
+            .filter(|a| a.as_str() != "--permissive")
+            .cloned()
+            .collect(),
+    )
+}
+
 // -- symbol sources ------------------------------------------------------------
 
 fn cmd_from_block(args: &[String]) -> ExitCode {
     run_cmd(|| {
-        let block_name = require_flag(args, "--block")?;
-        let count: u32 = require_flag(args, "--count")?
+        let (permissive, args) = take_permissive(args);
+        let block_name = require_flag(&args, "--block")?;
+        let count: u32 = require_flag(&args, "--count")?
             .parse()
             .map_err(|_| "--count must be a number".to_string())?;
-        let name = flag_value(args, "--name")?.unwrap_or("layout");
+        let name = flag_value(&args, "--name")?.unwrap_or("layout");
 
         // Validate by building before emitting anything.
         let id = block_by_name(block_name)
             .ok_or_else(|| format!("unknown block {block_name:?} (see `layout list-blocks`)"))?;
-        let _layout = Layout::new(Symbols::Block { block: id, count }).map_err(err)?;
+        let symbols = Symbols::Block { block: id, count };
+        let _layout = if permissive {
+            Layout::new_permissive(symbols)
+        } else {
+            Layout::new(symbols)
+        }
+        .map_err(err)?;
 
         print_json(
             &SourceDesc::Block {
@@ -115,9 +168,16 @@ fn cmd_from_block(args: &[String]) -> ExitCode {
 
 fn cmd_from_symbols(args: &[String]) -> ExitCode {
     run_cmd(|| {
-        let symbols = require_flag(args, "--symbols")?;
-        let name = flag_value(args, "--name")?.unwrap_or("layout");
-        let _layout = Layout::new(Symbols::String(symbols.to_owned())).map_err(err)?;
+        let (permissive, args) = take_permissive(args);
+        let symbols = require_flag(&args, "--symbols")?;
+        let name = flag_value(&args, "--name")?.unwrap_or("layout");
+        let owned = Symbols::String(symbols.to_owned());
+        let _layout = if permissive {
+            Layout::new_permissive(owned)
+        } else {
+            Layout::new(owned)
+        }
+        .map_err(err)?;
         print_json(&SourceDesc::Chars(symbols), name)
     })
 }
@@ -133,9 +193,14 @@ fn print_json(source: &SourceDesc<'_>, name: &str) -> Result<(), String> {
 
 // -- layout loading ------------------------------------------------------------
 
-fn load_layout(path: &str) -> Result<Layout, String> {
+fn load_layout(path: &str, permissive: bool) -> Result<Layout, String> {
     let json = std::fs::read_to_string(path).map_err(io_err)?;
-    layout_from_json(&json).map_err(err)
+    if permissive {
+        layout_from_json_permissive(&json)
+    } else {
+        layout_from_json(&json)
+    }
+    .map_err(err)
 }
 
 fn layout_summary(l: &Layout) -> String {
@@ -159,10 +224,10 @@ fn layout_summary(l: &Layout) -> String {
     )
 }
 
-fn cmd_validate(path: Option<&str>) -> ExitCode {
+fn cmd_validate(path: Option<&str>, permissive: bool) -> ExitCode {
     run_cmd(|| {
-        let path = path.ok_or("usage: layout validate <layout.json>")?;
-        let l = load_layout(path)?;
+        let path = path.ok_or("usage: layout validate <layout.json> [--permissive]")?;
+        let l = load_layout(path, permissive)?;
         println!("{}: valid", path);
         println!("{}", layout_summary(&l));
         Ok(())
@@ -171,10 +236,11 @@ fn cmd_validate(path: Option<&str>) -> ExitCode {
 
 // -- encode / decode -------------------------------------------------------------
 
-fn cmd_encode(path: Option<&str>, args: &[String]) -> ExitCode {
+fn cmd_encode(path: Option<&str>, args: &[String], permissive: bool) -> ExitCode {
     run_cmd(|| {
-        let path = path.ok_or("usage: layout encode <layout.json> [--in file] [--out file]")?;
-        let l = load_layout(path)?;
+        let path = path
+            .ok_or("usage: layout encode <layout.json> [--in file] [--out file] [--permissive]")?;
+        let l = load_layout(path, permissive)?;
         let bytes = read_input(flag_value(args, "--in")?)?;
 
         let mut out = vec![0u32; l.max_encoded_len(bytes.len())];
@@ -190,10 +256,11 @@ fn cmd_encode(path: Option<&str>, args: &[String]) -> ExitCode {
     })
 }
 
-fn cmd_decode(path: Option<&str>, args: &[String]) -> ExitCode {
+fn cmd_decode(path: Option<&str>, args: &[String], permissive: bool) -> ExitCode {
     run_cmd(|| {
-        let path = path.ok_or("usage: layout decode <layout.json> [--in file] [--out file]")?;
-        let l = load_layout(path)?;
+        let path = path
+            .ok_or("usage: layout decode <layout.json> [--in file] [--out file] [--permissive]")?;
+        let l = load_layout(path, permissive)?;
         let text = read_text(flag_value(args, "--in")?)?;
         let symbols: Vec<u32> = text.chars().map(|c| c as u32).collect();
 
@@ -202,6 +269,26 @@ fn cmd_decode(path: Option<&str>, args: &[String]) -> ExitCode {
 
         write_output(flag_value(args, "--out")?, &out[..n])?;
         eprintln!("decoded {} symbols → {} bytes", symbols.len(), n);
+        Ok(())
+    })
+}
+
+// -- dovahzul transliteration ----------------------------------------------------
+
+fn cmd_translit(args: &[String]) -> ExitCode {
+    run_cmd(|| {
+        let text = args.first().ok_or("usage: layout translit <latin text>")?;
+        let runes = unicode16_blocks::dovahzul::transliterate(text).map_err(|e| e.to_string())?;
+        println!("{runes}");
+        Ok(())
+    })
+}
+
+fn cmd_untranslit(args: &[String]) -> ExitCode {
+    run_cmd(|| {
+        let runes = args.first().ok_or("usage: layout untranslit <runes>")?;
+        let latin = unicode16_blocks::dovahzul::derune(runes).map_err(|e| e.to_string())?;
+        println!("{latin}");
         Ok(())
     })
 }
@@ -219,10 +306,10 @@ fn cmd_decode(path: Option<&str>, args: &[String]) -> ExitCode {
 /// Cap the per-symbol dump; a bad layout can reject hundreds of symbols.
 const MAX_OFFENDERS_SHOWN: usize = 8;
 
-fn cmd_recovery_check(path: Option<&str>) -> ExitCode {
+fn cmd_recovery_check(path: Option<&str>, permissive: bool) -> ExitCode {
     run_cmd(|| {
-        let path = path.ok_or("usage: layout recovery-check <layout.json>")?;
-        let layout = load_layout(path)?;
+        let path = path.ok_or("usage: layout recovery-check <layout.json> [--permissive]")?;
+        let layout = load_layout(path, permissive)?;
         let symbols: Vec<u32> = layout.iter().collect();
         println!("{path}: {} symbols", symbols.len());
 

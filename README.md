@@ -85,7 +85,10 @@ The file format is a single object:
 ```
 
 Emit it with [`write_layout_json`](src/layout_json.rs) (allocation-free,
-`no_std`) or parse it with [`layout_from_json`] (feature `json`).
+`no_std`) or parse it with [`layout_from_json`] (feature `json`). For
+layouts whose symbols sit in private use (see the Dovahzul section
+below), use [`layout_from_json_permissive`] or the CLI's `--permissive`
+flag — strict validation rejects private-use symbols by design.
 
 ## Using blocks as cipher alphabets
 
@@ -144,6 +147,37 @@ as over the limit rather than silently accepted: a 288-symbol phrase is not a
 backup anyone can transcribe. The SDK's `RecoveryFormat` is the codec that
 consumes such an alphabet.
 
+## Case study: Dovahzul (the dragon language) in Unicode
+
+[`dovahzul`](src/dovahzul.rs) is a worked example of giving a conlang
+with no official encoding a real home in Unicode. Skyrim's dragon
+language is written in 34 claw-runes — 25 single letters (the Latin
+alphabet minus C; loanwords spell C as S or K) plus 9 digraph runes
+(`aa ah ei ey ii ir oo ur uu`). thuum.org asked for a Unicode block in
+2015; as of Unicode 16.0 none exists (nor a UCSUR slot), so the module
+defines a *documented private mapping* in Supplementary Private Use
+Area-A, `U+F0000..=U+F0021`, in a stable order: single letters
+alphabetical, then digraphs alphabetical:
+
+```rust
+use unicode16_blocks::dovahzul::{dovahzul_layout, transliterate, derune};
+
+// "Drem Yol Lok" (greetings) — digraphs match greedily.
+let runes = transliterate("Drem Yol Lok").unwrap();
+assert_eq!(derune(&runes).unwrap(), "drem yol lok");
+
+// The 34-rune cipher layout (big-int mode, built permissively).
+let layout = dovahzul_layout().unwrap();
+assert_eq!(layout.symbol_count(), 34);
+```
+
+The mapping is versioned in the module and in `layouts/dovahzul.json`,
+so the runes survive anywhere this crate exists — that is what makes
+private use appropriate here (rendering is by agreement, and the
+agreement is this module). `layout translit` / `layout untranslit`
+do the Latin ↔ rune conversion from the shell; `--permissive` is
+required to validate/load the layout file.
+
 ## Data source & verification
 
 Ranges and names transcribed from the official UCD file
@@ -166,7 +200,7 @@ transcription pinned in `src/tests.rs`, and checks:
   composed predicates across the whole code space
 
 ```text
-cargo test          # 17 unit tests + 7 doc-tests
+cargo test          # 52 unit tests + 11 doc-tests (59 unit with --features json)
 ```
 
 ## License

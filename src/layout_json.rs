@@ -97,11 +97,31 @@ fn json_len(name: &str, source: &SourceDesc<'_>) -> usize {
 /// Accepts the same shape [`write_layout_json`] produces. Block sources
 /// are resolved by (loose) name via [`crate::block_by_name`]; char
 /// sources are used as-is. The result is fully validated exactly as
-/// [`Layout::new`] would validate it.
+/// [`Layout::new`] would validate it — so a layout whose symbols sit in
+/// private use (e.g. [`crate::dovahzul`]) is rejected here; use
+/// [`layout_from_json_permissive`] for those.
 ///
 /// Requires the `json` feature.
 #[cfg(feature = "json")]
 pub fn layout_from_json(json: &str) -> Result<Layout, LayoutError> {
+    parse_layout_json(json, true)
+}
+
+/// [`layout_from_json`] for closed systems: validation follows
+/// [`Layout::new_permissive`] instead of [`Layout::new`], so private-use
+/// symbols, noncharacters, and variation selectors are accepted
+/// (surrogates still are not).
+///
+/// Requires the `json` feature.
+#[cfg(feature = "json")]
+pub fn layout_from_json_permissive(json: &str) -> Result<Layout, LayoutError> {
+    parse_layout_json(json, false)
+}
+
+/// Shared JSON walk for both parse entry points; `strict` picks the
+/// validator.
+#[cfg(feature = "json")]
+fn parse_layout_json(json: &str, strict: bool) -> Result<Layout, LayoutError> {
     let v: serde_json::Value = serde_json::from_str(json).map_err(|_| LayoutError::Corrupted)?;
 
     let source = v.get("source").ok_or(LayoutError::Corrupted)?;
@@ -141,7 +161,11 @@ pub fn layout_from_json(json: &str) -> Result<Layout, LayoutError> {
         _ => return Err(LayoutError::Corrupted),
     };
 
-    Layout::new(symbols)
+    if strict {
+        Layout::new(symbols)
+    } else {
+        Layout::new_permissive(symbols)
+    }
 }
 
 // -- JSON string helpers (no_std, allocation-free) ---------------------------

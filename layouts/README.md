@@ -21,6 +21,7 @@ decoding back byte-identical; the size columns are measured from that run.
 | `byzantine-256.json` | 256 | Byzantine Musical Symbols | direct | 4,096 | 16,388 (4.0×) | musical neumes |
 | `cjk-4096.json` | 4,096 | CJK Unified Ideographs (first 4,096) | dense (12-bit) | 2,733 | 8,199 (2.0×) | hanzi |
 | `futhark.json` | 24 | Elder Futhark rune string | big-int (base-24) | 7,260 | 21,780 (5.3×) | true runes |
+| `dovahzul.json` | 34 | Dovahzul dragon runes (Supplementary PUA-A) | big-int (base-34) | 6,553 | 19,659 (4.8×) | dragon runes (font required) |
 
 ## Reading the table
 
@@ -44,6 +45,11 @@ decoding back byte-identical; the size columns are measured from that run.
   appear alone — the marker symbol for short tails is `一` (U+4E00).
 * `futhark`: the base-24 big-int mode adds a 14-symbol length header per
   512-byte chunk — negligible for real messages.
+* `dovahzul`: symbols are private-use code points (`U+F0000..=U+F0021`,
+  the Skyrim dragon-language mapping documented in `src/dovahzul.rs`),
+  so it only validates permissively — `layout validate --permissive` —
+  and needs a font covering SPUA-A to *render*. Round-trips are
+  font-independent; base-34 is denser than futhark's base-24.
 
 ## Make your own
 

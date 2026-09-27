@@ -1,0 +1,35 @@
+name: Fuzz smoke
+
+on:
+  schedule:
+    # 03:07 UTC daily — off the top of the hour.
+    - cron: "7 3 * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  fuzz:
+    name: libFuzzer smoke (each target, 5 min)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions-rust-lang/setup-rust-toolchain@v2
+        with:
+          toolchain: nightly
+          components: rust-src
+      # Short session per target; the committed corpus/ regression seeds
+      # run first on every invocation, so past findings are re-checked
+      # daily and new findings fail the run with a crash file in the log.
+      - name: Run fuzz smoke
+        run: |
+          for t in roundtrip decode_never_panics name_lookup json_parity bigint_framing; do
+            echo "=== $t ==="
+            RUSTUP_TOOLCHAIN=nightly cargo fuzz run "$t" -- -max_total_time=300
+          done

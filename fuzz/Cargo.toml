@@ -1,0 +1,50 @@
+[package]
+name = "unicode16-blocks-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2021"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+serde_json = "1"
+unicode16-blocks = { path = "..", features = ["json"] }
+
+[[bin]]
+name = "roundtrip"
+path = "fuzz_targets/roundtrip.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "decode_never_panics"
+path = "fuzz_targets/decode_never_panics.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "name_lookup"
+path = "fuzz_targets/name_lookup.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "json_parity"
+path = "fuzz_targets/json_parity.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "bigint_framing"
+path = "fuzz_targets/bigint_framing.rs"
+test = false
+doc = false
+bench = false
+
+[workspace]

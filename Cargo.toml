@@ -1,0 +1,22 @@
+[package]
+name = "unicode16-blocks"
+version = "16.0.0"
+edition = "2021"
+rust-version = "1.63"
+description = "Every Unicode 16.0 block as typed Rust data: exhaustive block table, O(log n) lookup, cipher-safety helpers (surrogates, noncharacters, private-use)."
+license = "MIT OR Apache-2.0 OR Unicode-3.0"
+keywords = ["unicode", "blocks", "cipher", "crypto", "no-std"]
+categories = ["encoding", "no-std", "text-processing"]
+
+[features]
+default = ["std"]
+json = ["dep:serde_json", "std"]
+std = []
+
+[[bin]]
+name = "layout"
+path = "src/main.rs"
+required-features = ["json"]
+
+[dependencies]
+serde_json = { version = "1", optional = true }

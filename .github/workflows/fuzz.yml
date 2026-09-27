@@ -24,6 +24,10 @@ jobs:
         with:
           toolchain: nightly
           components: rust-src
+      # cargo-fuzz is not preinstalled on GitHub runners; build it from
+      # source (--locked pins its dependency tree).
+      - name: Install cargo-fuzz
+        run: cargo install cargo-fuzz --locked
       # Short session per target; the committed corpus/ regression seeds
       # run first on every invocation, so past findings are re-checked
       # daily and new findings fail the run with a crash file in the log.

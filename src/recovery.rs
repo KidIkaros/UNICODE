@@ -43,7 +43,8 @@ const POWER_LIMBS: usize = 10;
 /// Rejects everything [`is_cipher_safe`](crate::is_cipher_safe) rejects, plus
 /// control characters, invisible format characters, combining marks in the
 /// ranges dedicated to them, the variation-selector supplement, the tag
-/// characters, and the line/paragraph separators.
+/// characters, and whitespace (which cannot survive the canonical phrase
+/// text form).
 ///
 /// Usable in `const` contexts.
 ///
@@ -72,8 +73,20 @@ pub const fn recovery_safe(cp: u32) -> bool {
     if cp <= 0x1F || (cp >= 0x7F && cp <= 0x9F) {
         return false;
     }
-    // Line and paragraph separators.
-    if cp == 0x2028 || cp == 0x2029 {
+    // Unicode White_Space that is not a control (C0/C1 whitespace was
+    // rejected above): the canonical phrase text separates symbols with
+    // whitespace and parsing drops it, so a whitespace symbol would silently
+    // vanish from its own phrase.
+    if cp == 0x0020
+        || cp == 0x00A0
+        || cp == 0x1680
+        || (cp >= 0x2000 && cp <= 0x200A)
+        || cp == 0x2028
+        || cp == 0x2029
+        || cp == 0x202F
+        || cp == 0x205F
+        || cp == 0x3000
+    {
         return false;
     }
     // Soft hyphen: renders as nothing but is a distinct codepoint.
@@ -222,6 +235,7 @@ mod tests {
             0x0000u32, 0x0007, 0x0009, 0x001B, 0x007F, 0x0085, // controls
             0x00AD, // soft hyphen
             0x200D, 0x200E, 0x200F, 0x2028, 0x2029, 0xFEFF, // format
+            0x0020, 0x00A0, 0x1680, 0x2007, 0x202F, 0x205F, 0x3000, // whitespace
             0x0301, 0x0483, 0x1AB0, 0x1DC0, 0x20D0, 0xFE20,  // combining
             0xE0041, // tag character
         ] {

@@ -216,6 +216,9 @@ fn cmd_decode(path: Option<&str>, args: &[String]) -> ExitCode {
 /// they sit inside allocated blocks. The phrase length is reported per
 /// supported entropy width, because an alphabet that needs more than
 /// [`MAX_PHRASE_SYMBOLS`] symbols is not transcribable by hand.
+/// Cap the per-symbol dump; a bad layout can reject hundreds of symbols.
+const MAX_OFFENDERS_SHOWN: usize = 8;
+
 fn cmd_recovery_check(path: Option<&str>) -> ExitCode {
     run_cmd(|| {
         let path = path.ok_or("usage: layout recovery-check <layout.json>")?;
@@ -233,11 +236,11 @@ fn cmd_recovery_check(path: Option<&str>) -> ExitCode {
             println!("recovery policy: every symbol passes");
         } else {
             println!("recovery policy: {} symbol(s) rejected", offenders.len());
-            for (index, cp) in offenders.iter().take(8) {
+            for (index, cp) in offenders.iter().take(MAX_OFFENDERS_SHOWN) {
                 println!("  position {index}: U+{cp:04X} is not recovery-safe");
             }
-            if offenders.len() > 8 {
-                println!("  ... and {} more", offenders.len() - 8);
+            if offenders.len() > MAX_OFFENDERS_SHOWN {
+                println!("  ... and {} more", offenders.len() - MAX_OFFENDERS_SHOWN);
             }
         }
 

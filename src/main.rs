@@ -7,6 +7,7 @@
 //! layout encode      layout.json [--in data.bin] [--out text] → cipher text
 //! layout decode      layout.json [--in text] [--out data.bin] → original bytes
 //! layout list-blocks                                          → block table
+//! layout recovery-check layout.json                           → recovery verdict
 //! ```
 //!
 //! Requires the `json` feature (run with `cargo run --features json`).
@@ -22,7 +23,8 @@ use std::process::ExitCode;
 
 use unicode16_blocks::layout::{Layout, Symbols, MAX_LAYOUT_LEN};
 use unicode16_blocks::{
-    block_by_name, layout_from_json, write_layout_json, LayoutError, SourceDesc,
+    block_by_name, layout_from_json, recovery_symbol_count, recovery_usable, write_layout_json,
+    LayoutError, SourceDesc, MAX_PHRASE_SYMBOLS, SUPPORTED_ENTROPY_BYTES,
 };
 
 fn main() -> ExitCode {
@@ -34,6 +36,7 @@ fn main() -> ExitCode {
         Some("encode") => cmd_encode(args.get(1).map(String::as_str), &args[2..]),
         Some("decode") => cmd_decode(args.get(1).map(String::as_str), &args[2..]),
         Some("list-blocks") => cmd_list_blocks(),
+        Some("recovery-check") => cmd_recovery_check(args.get(1).map(String::as_str)),
         Some("--help") | Some("-h") | Some("help") | None => {
             print_help();
             ExitCode::SUCCESS
@@ -62,6 +65,9 @@ commands:
   decode       <layout.json> [--in <file>] [--out <file>]
                Decode cipher symbols back into bytes.
   list-blocks  Print every Unicode 16.0 block with its range and size.
+  recovery-check <layout.json>
+               Check a layout against the recovery-phrase policy and report
+               the phrase length it produces at each supported entropy width.
 
 The layout JSON produced by from-block/from-symbols is the shareable
 format; feed it back to validate/encode/decode."
@@ -197,6 +203,65 @@ fn cmd_decode(path: Option<&str>, args: &[String]) -> ExitCode {
         write_output(flag_value(args, "--out")?, &out[..n])?;
         eprintln!("decoded {} symbols → {} bytes", symbols.len(), n);
         Ok(())
+    })
+}
+
+// -- recovery check ---------------------------------------------------------------
+
+/// Report whether a layout can back a recovery phrase.
+///
+/// A recovery alphabet has a stricter contract than a general cipher
+/// alphabet: symbols must survive transcription and interchange, so controls,
+/// invisible format characters, and combining marks are rejected even though
+/// they sit inside allocated blocks. The phrase length is reported per
+/// supported entropy width, because an alphabet that needs more than
+/// [`MAX_PHRASE_SYMBOLS`] symbols is not transcribable by hand.
+fn cmd_recovery_check(path: Option<&str>) -> ExitCode {
+    run_cmd(|| {
+        let path = path.ok_or("usage: layout recovery-check <layout.json>")?;
+        let layout = load_layout(path)?;
+        let symbols: Vec<u32> = layout.iter().collect();
+        println!("{path}: {} symbols", symbols.len());
+
+        let offenders: Vec<(usize, u32)> = symbols
+            .iter()
+            .enumerate()
+            .filter(|(_, &cp)| !unicode16_blocks::recovery_safe(cp))
+            .map(|(index, &cp)| (index, cp))
+            .collect();
+        if offenders.is_empty() {
+            println!("recovery policy: every symbol passes");
+        } else {
+            println!("recovery policy: {} symbol(s) rejected", offenders.len());
+            for (index, cp) in offenders.iter().take(8) {
+                println!("  position {index}: U+{cp:04X} is not recovery-safe");
+            }
+            if offenders.len() > 8 {
+                println!("  ... and {} more", offenders.len() - 8);
+            }
+        }
+
+        for entropy_bytes in SUPPORTED_ENTROPY_BYTES {
+            match recovery_symbol_count(symbols.len(), entropy_bytes) {
+                Some(count) => {
+                    let verdict = if count <= MAX_PHRASE_SYMBOLS {
+                        "usable"
+                    } else {
+                        "over the limit"
+                    };
+                    println!(
+                        "  {entropy_bytes}-byte entropy: {count} symbols ({verdict}, limit {MAX_PHRASE_SYMBOLS})"
+                    );
+                }
+                None => continue,
+            }
+        }
+
+        if offenders.is_empty() && recovery_usable(symbols.len()) {
+            Ok(())
+        } else {
+            Err("not a usable recovery alphabet".to_string())
+        }
     })
 }
 

@@ -69,12 +69,13 @@ value-overflow digits all return typed errors, never panic.
 
 ```bash
 # create + share (requires the `json` feature for the CLI)
-cargo run --features json -- layout from-block --block Runic --count 96 --name runic96 > runic.json
-cargo run --features json -- layout from-symbols --symbols "ᚠᚢᚦ𓂀" > futhark.json
-cargo run --features json -- layout validate runic.json
-cargo run --features json -- layout encode runic.json --in msg.bin --out cipher.txt
-cargo run --features json -- layout decode runic.json --in cipher.txt --out back.bin
-cargo run --features json -- layout list-blocks
+cargo run --features json -- from-block --block Runic --count 96 --name runic96 > runic.json
+cargo run --features json -- from-symbols --symbols "ᚠᚢᚦ𓂀" > futhark.json
+cargo run --features json -- validate runic.json
+cargo run --features json -- encode runic.json --in msg.bin --out cipher.txt
+cargo run --features json -- decode runic.json --in cipher.txt --out back.bin
+cargo run --features json -- list-blocks
+cargo run --features json -- recovery-check layouts/futhark.json
 ```
 
 The file format is a single object:
@@ -109,6 +110,39 @@ selectors (invisible, breaks signatures/hashes), out-of-range values, and
 `No_Block` gaps (unassigned). Code points inside an allocated block can
 still be individually unassigned — the crate intentionally does not carry
 general-category data; validate against your own alphabet for that.
+
+## Using a layout as a recovery alphabet
+
+A recovery phrase is a seed backup, so its alphabet has a stricter contract
+than a general cipher alphabet: every symbol has to survive transcription and
+interchange, and the phrase has to be short enough to write down by hand.
+
+`recovery-check` applies that contract and reports the phrase length:
+
+```bash
+cargo run --features json -- recovery-check layouts/futhark.json
+```
+
+```text
+layouts/futhark.json: 24 symbols
+recovery policy: every symbol passes
+  16-byte entropy: 32 symbols (usable, limit 64)
+  24-byte entropy: 48 symbols (usable, limit 64)
+  32-byte entropy: 63 symbols (usable, limit 64)
+```
+
+[`recovery_safe`](src/recovery.rs) is the predicate behind that verdict. It
+composes the checks [`is_cipher_safe`] does not make: control characters,
+invisible format characters, combining marks in the ranges dedicated to them,
+the variation-selector supplement, tag characters, and line/paragraph
+separators are all rejected — they sit *inside* allocated blocks, so block
+coverage alone accepts them. `is_cipher_safe(0x0000)` is `true`;
+`recovery_safe(0x0000)` is `false`.
+
+An alphabet needing more than [`MAX_PHRASE_SYMBOLS`] (64) symbols is reported
+as over the limit rather than silently accepted: a 288-symbol phrase is not a
+backup anyone can transcribe. The SDK's `RecoveryFormat` is the codec that
+consumes such an alphabet.
 
 ## Data source & verification
 

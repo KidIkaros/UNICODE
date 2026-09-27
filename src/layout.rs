@@ -852,7 +852,7 @@ fn push_char_symbols(layout: &mut Layout, s: &str, strict: bool) -> Result<(), L
 }
 
 /// Ceiling division. (Keeps the crate's 1.63 MSRV; `div_ceil` needs 1.73.)
-fn ceil_div(a: usize, b: usize) -> usize {
+pub(crate) fn ceil_div(a: usize, b: usize) -> usize {
     (a + b - 1) / b
 }
 

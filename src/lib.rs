@@ -18,6 +18,9 @@
 //!   a symbol string, then encode/decode bytes with allocation-free codecs.
 //! * Cipher-safety predicates: [`is_surrogate`], [`is_noncharacter`],
 //!   [`is_private_use`], [`is_variation_selector`], [`is_cipher_safe`].
+//! * Recovery-alphabet checks ([`recovery_safe`],
+//!   [`recovery_symbol_count`]): the stricter contract a seed-backup
+//!   alphabet must satisfy, and the phrase length it produces.
 //!
 //! ## Cipher usage patterns
 //!
@@ -80,6 +83,7 @@ pub mod layout;
 pub mod layout_json;
 #[cfg(test)]
 mod layout_tests;
+pub mod recovery;
 #[cfg(test)]
 mod tests;
 mod unicode16_blocks;
@@ -89,6 +93,10 @@ pub use layout::{Layout, LayoutError, Symbols, MAX_LAYOUT_LEN};
 #[cfg(feature = "json")]
 pub use layout_json::layout_from_json;
 pub use layout_json::{write_layout_json, SourceDesc};
+pub use recovery::{
+    first_unsafe_symbol, recovery_message_bits, recovery_safe, recovery_symbol_count,
+    recovery_usable, MAX_PHRASE_SYMBOLS, SUPPORTED_ENTROPY_BYTES,
+};
 
 /// Highest Unicode code point (`U+10FFFF`).
 pub const UNICODE_LAST: char = '\u{10FFFF}';
